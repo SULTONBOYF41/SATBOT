@@ -9,27 +9,27 @@ const crypto = require("crypto");
 // === ENV ===
 const BOT_TOKEN = process.env.BOT_TOKEN;
 if (!BOT_TOKEN) throw new Error("BOT_TOKEN environment variablini qo‘ying.");
-const RAW_CHANNELS = process.env.CHANNELS || ""; // @username yoki -100ID (vergul bilan)
+const RAW_CHANNELS = process.env.CHANNELS || "";
 const WEBHOOK_SECRET =
     process.env.WEBHOOK_SECRET ||
-    crypto.createHash("sha256").update(BOT_TOKEN).digest("hex").slice(0, 32); // ixtiyoriy, lekin barqaror
+    crypto.createHash("sha256").update(BOT_TOKEN).digest("hex").slice(0, 32);
 
 // === Helpers ===
 function normalizeChannel(input) {
     let s = String(input || "").trim();
-    if (/^-100\d+$/.test(s)) return s;                // private ID
+    if (/^-100\d+$/.test(s)) return s; // private ID
     const m1 = s.match(/tg:\/\/resolve\?domain=([A-Za-z0-9_]+)/i);
     if (m1) return "@" + m1[1];
     const m2 = s.match(/(?:https?:\/\/)?t\.me\/([A-Za-z0-9_]+)/i);
     if (m2) return "@" + m2[1];
-    if (s.startsWith("@")) return s;                  // public username
+    if (s.startsWith("@")) return s;
     return "";
 }
 
 function toLink(idOrUsername) {
     const s = String(idOrUsername);
     if (s.startsWith("@")) return `https://t.me/${s.slice(1)}`;
-    return null; // private ID — foydalanuvchiga invite link kerak
+    return null;
 }
 
 const CHANNELS = RAW_CHANNELS.split(",").map(normalizeChannel).filter(Boolean);
@@ -135,25 +135,18 @@ bot.command("chanid", async (ctx) => {
 // === Express (Webhook + Health + Debug) ===
 const app = express();
 
-// Health check (Render Settings → Health Check Path = /healthz)
+// Health check
 app.get("/healthz", (_req, res) => res.status(200).send("OK"));
 app.get("/", (_req, res) => res.send("OK"));
 
-// **MUHIM**: token o‘rniga oddiy secret path ishlatamiz — ":" yo‘q!
+// **Webhook path** (token URL’da yo‘q)
 const hookPath = `/webhook/${WEBHOOK_SECRET}`;
 
-// JSON parser qo‘ymaymiz
-app.use(hookPath, bot.webhookCallback(hookPath));
+// GETga ham 200 qaytaramiz (brauzer/monitoring 404 olmasin)
+app.get(hookPath, (_req, res) => res.status(200).send("OK"));
 
-// Webhook holati
-app.get("/debug", async (_req, res) => {
-    try {
-        const info = await bot.telegram.getWebhookInfo();
-        res.json(info);
-    } catch (e) {
-        res.status(500).json({ error: e?.message || String(e) });
-    }
-});
+// POST — faqat shu yerda Telegraf handler
+app.post(hookPath, bot.webhookCallback(hookPath));
 
 // === Start ===
 const PORT = process.env.PORT || 3000;
@@ -165,9 +158,9 @@ app.listen(PORT, async () => {
     if (baseUrl) {
         const url = `${baseUrl}${hookPath}`;
         try {
-            // avval eski webhookni tozalaymiz
+            // tozalab, qayta o‘rnatamiz va kutayotgan updatelarni drop qilamiz
             await bot.telegram.deleteWebhook().catch(() => { });
-            await bot.telegram.setWebhook(url);
+            await bot.telegram.setWebhook(url, { drop_pending_updates: true });
             console.log("✅ Webhook set:", url);
         } catch (e) {
             console.error("Webhook set xatosi:", e?.description || e?.message || e);
