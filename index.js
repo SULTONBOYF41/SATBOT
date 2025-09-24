@@ -1,4 +1,4 @@
-// index.js — Telegraf + Express (Webhook + Polling fallback)
+// index.js — Telegraf + Express (Webhook — Render, Polling — lokal)
 // npm i telegraf express dotenv
 
 require("dotenv").config();
@@ -8,13 +8,13 @@ const { Telegraf, Markup } = require("telegraf");
 // === ENV ===
 const BOT_TOKEN = process.env.BOT_TOKEN;
 if (!BOT_TOKEN) throw new Error("BOT_TOKEN environment variablini qo‘ying.");
-const RAW_CHANNELS = process.env.CHANNELS || ""; // @username yoki -100ID, vergul bilan
+const RAW_CHANNELS = process.env.CHANNELS || ""; // @username yoki -100ID (vergul bilan)
 
 // === Helpers ===
 function normalizeChannel(input) {
     let s = String(input || "").trim();
 
-    // Private ID: -100...
+    // -100... (private ID)
     if (/^-100\d+$/.test(s)) return s;
 
     // tg://resolve?domain=username
@@ -25,7 +25,7 @@ function normalizeChannel(input) {
     const m2 = s.match(/(?:https?:\/\/)?t\.me\/([A-Za-z0-9_]+)/i);
     if (m2) return "@" + m2[1];
 
-    // @username
+    // @username (public)
     if (s.startsWith("@")) return s;
 
     return ""; // noto‘g‘ri format
@@ -34,7 +34,7 @@ function normalizeChannel(input) {
 function toLink(idOrUsername) {
     const s = String(idOrUsername);
     if (s.startsWith("@")) return `https://t.me/${s.slice(1)}`; // public
-    return null; // private ID bo‘lsa, o‘zingiz invite link bering
+    return null; // private ID bo‘lsa foydalanuvchiga invite link bering
 }
 
 const CHANNELS = RAW_CHANNELS.split(",").map(normalizeChannel).filter(Boolean);
@@ -55,7 +55,7 @@ async function isMember(ctx, chatId) {
 // === Bot ===
 const bot = new Telegraf(BOT_TOKEN);
 
-// Kirgan update’larni logga yozamiz (diagnostika uchun)
+// Diagnostika: kirgan update’larni logga yozamiz
 bot.use(async (ctx, next) => {
     console.log("update:", {
         type: ctx.updateType,
@@ -71,7 +71,7 @@ bot.start(async (ctx) => {
 
     const text = [
         "👋 Assalomu alaykum!",
-        "Quyidagi kanallarimizga a’zo bo‘ling va so‘ng “✅ Tekshirish”ni bosing:",
+        "Quyidagi kanallarimizga a’zo bo‘ling va so‘ng “✅ Tekshirish” tugmasini bosing:",
         ...CHANNELS.map((c) => `• ${c}`)
     ].join("\n");
 
@@ -118,7 +118,7 @@ bot.action("verify", async (ctx) => {
     );
 });
 
-// Qo‘shimcha buyruqlar (ixtiyoriy)
+// Qo‘shimcha komandalar (ixtiyoriy)
 bot.command("verify", async (ctx) => {
     if (!CHANNELS.length) return ctx.reply("KANALLAR sozlanmagan.");
     const results = await Promise.all(CHANNELS.map((id) => isMember(ctx, id)));
@@ -133,7 +133,7 @@ bot.command("chanid", async (ctx) => {
     try {
         const chat = await ctx.telegram.getChat(handle);
         return ctx.reply(`ID: ${chat.id}\nTitle: ${chat.title}`);
-    } catch (e) {
+    } catch {
         return ctx.reply("Topilmadi. Bot kanalga admin qilinganmi va username to‘g‘rimi?");
     }
 });
@@ -149,7 +149,7 @@ app.get("/", (_req, res) => res.send("OK"));
 // Webhook path (token bilan)
 const hookPath = `/${BOT_TOKEN}`;
 
-// Telegraf webhook callback — **JSON parser qo‘ymaymiz**
+// **JSON parser qo‘ymaymiz** — Telegraf o‘zi o‘qiydi:
 app.use(hookPath, bot.webhookCallback(hookPath));
 
 // Webhook holatini tekshirish
@@ -165,7 +165,7 @@ app.get("/debug", async (_req, res) => {
 // === Start server ===
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, async () => {
-    // Render’da RENDER_EXTERNAL_URL avtomatik bo‘ladi; lokalda bo‘lmaydi
+    // Render’da RENDER_EXTERNAL_URL bo‘ladi; lokalda bo‘lmaydi → polling fallback
     const baseUrl =
         process.env.RENDER_EXTERNAL_URL?.replace(/\/+$/, "") ||
         process.env.WEBHOOK_BASE_URL?.replace(/\/+$/, "");
@@ -180,7 +180,7 @@ app.listen(PORT, async () => {
             console.error("Webhook set xatosi:", e?.description || e?.message || e);
         }
     } else {
-        // Polling fallback (lokal dev)
+        // Polling fallback (lokal)
         console.warn("⚠️ Webhook URL yo‘q. Polling rejimi ishga tushirildi.");
         try {
             await bot.telegram.deleteWebhook().catch(() => { });
